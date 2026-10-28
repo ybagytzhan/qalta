@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Qalta">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Qalta</title>
+<style>
+  :root { --bg:#111; --card:#1c1c1e; --line:#2c2c2e; --text:#eee; --dim:#8e8e93; --acc:#3d8bfd; --red:#ff5a5a; --green:#3ecf72;
+          --d:clamp(38px, min(13vw, 6.4dvh), 58px); --nav:64px; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--text); font:17px -apple-system, system-ui, sans-serif;
+         padding:env(safe-area-inset-top) 12px calc(var(--nav) + env(safe-area-inset-bottom));
+         -webkit-user-select:none; user-select:none; }
+  button, input, select { font:inherit; color:inherit; }
+  input, select { -webkit-user-select:text; user-select:text; }
+  button { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; cursor:pointer; }
+  button.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+  input, select { background:#111; border:1px solid var(--line); border-radius:12px; padding:12px; width:100%; min-width:0; -webkit-appearance:none; }
+  input.bad { border-color:var(--red); }
+  .row { display:flex; gap:8px; margin:10px 0; }
+  .row > * { flex:1; min-width:0; }
+  .h { color:var(--dim); font-size:13px; font-weight:500; margin:18px 4px 6px; text-transform:uppercase; letter-spacing:.04em; }
+
+  /* entry: three zones that fit one screen */
+  #scrAdd { display:flex; flex-direction:column; gap:8px; padding-top:8px;
+            height:calc(100dvh - var(--nav) - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+  .zone { background:var(--card); border-radius:18px; padding:8px 4px; }
+  .zone.grow { flex:1; overflow:auto; }
+  .zone .h { margin:0 8px 6px; font-size:11px; }
+  .icons { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px 2px; }
+  #incIcons, #expIcons { grid-template-columns:repeat(5, 1fr); }
+  .ic { display:flex; flex-direction:column; align-items:center; gap:3px; touch-action:none; -webkit-touch-callout:none; cursor:grab; min-width:0; }
+  .ic .c { width:var(--d); height:var(--d); border-radius:50%; display:grid; place-items:center; font-size:calc(var(--d) * .42);
+           font-weight:700; color:#fff; background:#2c2c2e; transition:transform .12s; }
+  .ic span { font-size:11px; text-align:center; line-height:1.15; max-width:100%; overflow-wrap:anywhere; }
+  .ic b { font-size:11px; font-weight:600; white-space:nowrap; }
+  #incIcons .c { background:#1d3b2a; }
+  #expIcons .c { background:#3b2020; }
+  .ic.plus .c { background:none; border:2px dashed var(--line); color:var(--dim); }
+  .ic.src { opacity:.35; }
+  .ic.hot .c { transform:scale(1.15); box-shadow:0 0 0 3px var(--acc); }
+  #ghost { position:fixed; z-index:20; pointer-events:none; transform:translate(-50%, -50%) scale(1.15); box-shadow:0 8px 24px #000a; }
+
+  nav { position:fixed; left:0; right:0; bottom:0; display:flex; background:#181818; border-top:1px solid var(--line);
+        padding-bottom:env(safe-area-inset-bottom); z-index:5; }
+  nav button { flex:1; border:0; border-radius:0; background:none; height:var(--nav); color:var(--dim); }
+  nav button.on { color:var(--acc); background:none; }
+
+  .month { display:flex; align-items:center; justify-content:space-between; margin:14px 0; }
+  .month b { font-size:20px; }
+  .month button { width:52px; }
+  .totals { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; text-align:center; }
+  .totals div { background:var(--card); border-radius:12px; padding:10px 4px; font-size:15px; }
+  .totals span { display:block; color:var(--dim); font-size:12px; }
+  .card { background:var(--card); border-radius:12px; padding:12px; margin:8px 0; }
+  .card .top { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+  .card small { color:var(--dim); display:block; }
+  .bar { height:6px; background:var(--line); border-radius:3px; margin-top:8px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--green); }
+  .bar i.over { background:var(--red); }
+  .acts { display:flex; gap:6px; flex-shrink:0; }
+  .acts button { padding:8px 10px; }
+  .exp, .out { color:var(--red); } .inc, .in { color:var(--green); }
+  .paid { background:#1d3b2a; border-color:#1d3b2a; }
+  .info div { display:flex; justify-content:space-between; gap:8px; padding:4px 0; font-size:15px; }
+  .info span { color:var(--dim); }
+  .pie { width:min(60vw, 230px); aspect-ratio:1; border-radius:50%; margin:8px auto 4px; display:grid; place-items:center; }
+  .pie > div { width:62%; aspect-ratio:1; border-radius:50%; background:var(--bg); display:grid; place-content:center; text-align:center; }
+  .pie span { color:var(--dim); font-size:12px; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; }
+
+  .cal { display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; text-align:center; font-size:14px; }
+  .cal .w { color:var(--dim); font-size:11px; }
+  .cal .d { background:var(--card); border-radius:10px; padding:8px 0 6px; position:relative; }
+  .cal .d.today { box-shadow:inset 0 0 0 2px var(--acc); }
+  .cal .d i { display:block; width:6px; height:6px; border-radius:50%; margin:3px auto 0; background:transparent; }
+  .cal .d.due i { background:var(--red); }
+  .cal .d.ok i { background:var(--green); }
+
+  dialog { background:var(--card); color:var(--text); border:0; border-radius:18px; width:min(92vw, 420px); padding:16px;
+           margin:calc(env(safe-area-inset-top) + 16px) auto auto; }
+  dialog::backdrop { background:#000a; }
+  dialog h3 { margin:0 0 8px; }
+  dialog label { display:block; color:var(--dim); font-size:13px; margin:10px 0 0; }
+  dialog label > * { margin-top:4px; color:var(--text); }
+  dialog label:first-child input[data-amount] { font-size:32px; font-weight:600; text-align:center; }
+
+  #toast { position:fixed; left:16px; right:16px; bottom:calc(var(--nav) + 16px + env(safe-area-inset-bottom)); background:#2e7d4f; color:#fff;
+           padding:14px; border-radius:12px; text-align:center; opacity:0; transition:opacity .2s; pointer-events:none; z-index:30; }
+  #toast.show { opacity:1; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+
+<section id="scrAdd">
+  <div class="zone"><div class="h">Доходы</div><div class="icons" id="incIcons"></div></div>
+  <div class="zone"><div class="h">Счета</div><div class="icons" id="accIcons"></div></div>
+  <div class="zone grow"><div class="h">Расходы</div><div class="icons" id="expIcons"></div></div>
+</section>
+
+<section id="scrMonth" hidden>
+  <div class="month"><button data-m="-1">‹</button><b class="mTitle"></b><button data-m="1">›</button></div>
+  <div class="totals" id="totals"></div>
+  <div class="h">Доходы</div>
+  <div id="incPie"></div>
+  <div id="incLegend"></div>
+  <div class="h">Расходы</div>
+  <div id="expPie"></div>
+  <div id="catStats"></div>
+  <div class="h">История</div>
+  <div id="hist"></div>
+  <button id="csvBtn" style="width:100%;margin:12px 0">Экспорт месяца в CSV</button>
+</section>
+
+<section id="scrLoans" hidden>
+  <div class="month"><button data-m="-1">‹</button><b class="mTitle"></b><button data-m="1">›</button></div>
+  <div class="cal" id="cal"></div>
+  <div class="h" id="loanHead">Кредиты и рассрочки</div>
+  <div id="loanList"></div>
+  <div class="h">Я должен</div>
+  <div id="oweList"></div>
+  <div class="h">Мне должны</div>
+  <div id="owedList"></div>
+  <div class="row"><button id="addLoan">+ Кредит / рассрочка</button><button id="addDebt">+ Долг</button></div>
+</section>
+
+<dialog id="dlg">
+  <form method="dialog" id="dlgForm">
+    <h3 id="dlgTitle"></h3>
+    <div id="dlgInfo"></div>
+    <div id="dlgFields"></div>
+    <div class="row"><button type="button" onclick="this.closest('dialog').close()">Отмена</button><button value="ok" class="on">Сохранить</button></div>
+    <div id="dlgExtra"></div>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+<nav>
+  <button data-scr="scrAdd" class="on">Запись</button>
+  <button data-scr="scrMonth">Аналитика</button>
+  <button data-scr="scrLoans">Кредиты</button>
+</nav>
+
+<script>
+const DEF = {
+  inc: ['Зарплата', 'Подработка', 'Подработка 2'],
+  exp: ['Продукты','Транспорт','Еда','Развлечения','Связь','Здоровье','Автомобиль','Одежда','Подарки','Переводы людям','Кредиты','Рассрочки','Налоги'],
+  accs: ['Freedom','Kaspi','Halyk','Forte','Депозит'].map(name => ({ name, start: 0 })),
+  limits: {}, loans: [], debts: [], lastAcc: 'Kaspi',
+};
+const EMOJI = { 'Зарплата':'💼', 'Подработка':'🛠️', 'Подработка 2':'🧰', 'Продукты':'🛒', 'Транспорт':'🚌', 'Еда':'🍔', 'Развлечения':'🎬',
+  'Связь':'📱', 'Здоровье':'💊', 'Автомобиль':'🚗', 'Одежда':'👕', 'Подарки':'🎁', 'Переводы людям':'🤝', 'Кредиты':'🏦', 'Рассрочки':'🧾', 'Налоги':'🧮' };
+const COLORS = ['#e53935','#43a047','#1e88e5','#8e24aa','#fb8c00','#00897b','#6d4c41','#546e7a'];
+const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const MAX_ACCS = 8;
+const PIE = ['#3d8bfd','#ff9f0a','#30d158','#ff453a','#bf5af2','#64d2ff','#ffd60a','#ff375f','#ac8e68','#5e5ce6','#66d4cf','#8e8e93'];
+
+// tx: {id, type:'exp'|'inc'|'tr'|'debt', amount, cat, acc, to, dir:'in'|'out' (debt only), date:'YYYY-MM-DD', note}
+// loan: {id, kind:'credit'|'inst', name, amount, day, paid:{'YYYY-MM': txId}}   debt: {id, dir:'owe'|'owed', name, amount}
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+let txs = load('txs', []);
+let cfg = { ...DEF, ...load('cfg', {}) };
+// shortcut: localStorage holds ~5 MB ≈ 15–18k records (years at 10 a day), move to IndexedDB if the warning ever shows
+const save = () => {
+  try { localStorage.setItem('txs', JSON.stringify(txs)); localStorage.setItem('cfg', JSON.stringify(cfg)); }
+  catch { alert('Не удалось сохранить: память переполнена. Последнее действие пропадёт после перезапуска. Экспортируйте CSV и удалите старые записи.'); }
+};
+
+const $ = id => document.getElementById(id);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
+const pad = n => String(n).padStart(2, '0');
+// local date, not UTC: toISOString() would give yesterday before 05:00 in Kazakhstan
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const money = n => Math.round(n).toLocaleString('ru-RU') + ' ₸';
+const parseAmount = s => { const n = parseFloat(String(s).replace(/\s/g, '').replace(',', '.')); return n > 0 ? Math.round(n * 100) / 100 : 0; };
+const accOpts = () => cfg.accs.map(a => [a.name, a.name]);
+
+function monthStats(list, ym) {
+  const s = { inc: 0, exp: 0, cats: {}, incCats: {} };
+  for (const t of list) {
+    if (!t.date.startsWith(ym) || (t.type !== 'inc' && t.type !== 'exp')) continue;  // transfers and debts are neither
+    s[t.type] += t.amount;
+    const c = t.type === 'exp' ? s.cats : s.incCats;
+    c[t.cat] = (c[t.cat] || 0) + t.amount;
+  }
+  return s;
+}
+
+function balances(list, accs) {
+  const b = Object.fromEntries(accs.map(a => [a.name, a.start || 0]));
+  const add = (a, n) => { if (a in b) b[a] += n; };
+  for (const t of list) {
+    if (t.type === 'inc' || (t.type === 'debt' && t.dir === 'in')) add(t.acc, t.amount);
+    else if (t.type === 'exp' || (t.type === 'debt' && t.dir === 'out')) add(t.acc, -t.amount);
+    else if (t.type === 'tr') { add(t.acc, -t.amount); add(t.to, t.amount); }
+  }
+  return b;
+}
+
+const typeName = t => ({ exp: 'Расход', inc: 'Доход', tr: 'Перевод' })[t.type] || (t.dir === 'in' ? 'Долг (получено)' : 'Долг (отдано)');
+const txLabel = t => t.type === 'tr' ? `Перевод ${t.acc} → ${t.to}` : t.type === 'debt' ? `${typeName(t)} · ${t.acc}` : `${t.cat} · ${t.acc}`;
+const isIn = t => t.type === 'inc' || t.dir === 'in';
+
+function toCSV(list) {
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const rows = [['Дата','Тип','Категория','Счёт','На счёт','Сумма','Комментарий']];
+  for (const t of list) rows.push([t.date, typeName(t), t.cat || '', t.acc, t.to || '', String(t.amount).replace('.', ','), t.note || '']);
+  // BOM + ";" so Russian-locale Excel opens it in columns with correct Cyrillic
+  return '﻿' + rows.map(r => r.map(q).join(';')).join('\r\n');
+}
+
+// ---- popup form ----
+// fields: {k, label, type:'amount'|'date'|'number'|'text', optional, value, options:[[value, text]]}; onOk(values) returns false to keep it open
+function form(title, fields, onOk, extra, info) {
+  $('dlgTitle').textContent = title;
+  $('dlgInfo').innerHTML = info || '';
+  const els = {};
+  $('dlgFields').replaceChildren(...fields.map(f => {
+    const lab = document.createElement('label');
+    lab.textContent = f.label;
+    let el;
+    if (f.options) { el = document.createElement('select'); for (const [v, t] of f.options) el.add(new Option(t, v)); }
+    else {
+      el = document.createElement('input');
+      // never type=number: its step check silently blocks submitting "1234.56"
+      el.type = f.type === 'date' ? 'date' : 'text';
+      if (f.type === 'amount' || f.type === 'number') { el.inputMode = 'decimal'; el.autocomplete = 'off'; }
+      if (f.type === 'amount') { el.placeholder = '0 ₸'; el.dataset.amount = 1; }
+    }
+    el.value = f.value ?? '';
+    if (f.options && el.selectedIndex < 0) el.selectedIndex = 0;
+    lab.append(el);
+    els[f.k] = el;
+    return lab;
+  }));
+  $('dlgExtra').replaceChildren(...(extra ? [extra] : []));
+  $('dlgForm').onsubmit = e => {
+    const v = {};
+    for (const f of fields) {
+      v[f.k] = els[f.k].value;
+      if (f.type === 'amount') {
+        v[f.k] = parseAmount(v[f.k]);
+        const bad = !v[f.k] && !(f.optional && !els[f.k].value.trim());
+        els[f.k].classList.toggle('bad', bad);
+        if (bad) { e.preventDefault(); els[f.k].focus(); return; }
+      }
+    }
+    if (onOk(v) === false) e.preventDefault();
+  };
+  $('dlg').showModal();
+  $('dlgFields').querySelector('input')?.focus();
+}
+
+function delButton(text, onDel) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.textContent = text; b.style.cssText = 'width:100%;color:var(--red)';
+  b.onclick = () => { if (confirm(text + '?')) { $('dlg').close(); onDel(); save(); refresh(); } };
+  return b;
+}
+
+// ---- entry screen: drag income → account, account → expense, account → account ----
+function dropAction(s, t) {
+  if (s.kind === 'inc' && t.kind === 'acc') return () => txForm({ type: 'inc', cat: s.name, acc: t.name });
+  if (s.kind === 'acc' && t.kind === 'exp') return () => txForm({ type: 'exp', cat: t.name, acc: s.name });
+  if (s.kind === 'acc' && t.kind === 'acc' && s.name !== t.name) return () => txForm({ type: 'tr', acc: s.name, to: t.name });
+}
+
+let drag = null;
+function dropTarget(e) {
+  const t = document.elementFromPoint(e.clientX, e.clientY)?.closest('.ic');
+  return t && t !== drag.el && t.dataset.kind && dropAction(drag.el.dataset, t.dataset) ? t : null;
+}
+function endDrag() {
+  drag?.ghost?.remove();
+  drag?.el.classList.remove('src');
+  document.querySelectorAll('.ic.hot').forEach(x => x.classList.remove('hot'));
+  drag = null;
+}
+function bindDrag(el) {
+  el.addEventListener('pointerdown', e => { endDrag(); drag = { el, x: e.clientX, y: e.clientY }; el.setPointerCapture(e.pointerId); });
+  el.addEventListener('pointermove', e => {
+    if (drag?.el !== el) return;
+    if (!drag.ghost) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8) return;
+      drag.ghost = el.querySelector('.c').cloneNode(true);
+      drag.ghost.id = 'ghost';
+      document.body.append(drag.ghost);
+      el.classList.add('src');
+    }
+    drag.ghost.style.left = e.clientX + 'px';
+    drag.ghost.style.top = e.clientY + 'px';
+    const t = dropTarget(e);
+    document.querySelectorAll('.ic.hot').forEach(x => x !== t && x.classList.remove('hot'));
+    t?.classList.add('hot');
+  });
+  el.addEventListener('pointerup', e => {
+    if (drag?.el !== el) return;
+    const moved = !!drag.ghost, t = moved && dropTarget(e);
+    endDrag();
+    if (!moved) tapIcon(el.dataset);
+    else if (t) dropAction(el.dataset, t.dataset)();
+    else toast('Доход → счёт, счёт → расход, счёт → счёт', true);
+  });
+  el.addEventListener('pointercancel', endDrag);
+}
+
+function icon(kind, name, color, sub) {
+  const el = document.createElement('div');
+  el.className = 'ic';
+  el.dataset.kind = kind; el.dataset.name = name;
+  const face = kind !== 'acc' && EMOJI[name] || name.slice(0, 1).toUpperCase();
+  el.innerHTML = `<div class="c"${color ? ` style="background:${color}"` : ''}>${esc(face)}</div><span>${esc(name)}</span>${sub != null ? `<b>${esc(sub)}</b>` : ''}`;
+  bindDrag(el);
+  return el;
+}
+
+function renderAdd() {
+  const bal = balances(txs, cfg.accs);
+  const plus = (label, onTap) => {
+    const p = document.createElement('div');
+    p.className = 'ic plus';
+    p.innerHTML = `<div class="c">+</div><span>${label}</span>`;
+    p.onclick = onTap;
+    return p;
+  };
+  $('incIcons').replaceChildren(...cfg.inc.map(n => icon('inc', n)), plus('Доход', () => catForm('inc')));
+  const accs = cfg.accs.map((a, i) => icon('acc', a.name, COLORS[i % COLORS.length], money(bal[a.name])));
+  if (cfg.accs.length < MAX_ACCS) accs.push(plus('Счёт', () => accForm()));
+  $('accIcons').replaceChildren(...accs);
+  $('expIcons').replaceChildren(...cfg.exp.map(n => icon('exp', n)), plus('Расход', () => catForm('exp')));
+}
+
+// tap (no drag) on an icon: account → name/balance, income/expense → rename or delete
+function tapIcon({ kind, name }) {
+  if (kind === 'acc') return accForm(cfg.accs.find(a => a.name === name));
+  catForm(kind, name);
+}
+
+function catForm(kind, name) {
+  form(name || (kind === 'inc' ? 'Новый доход' : 'Новая категория расхода'), [{ k: 'name', label: 'Название', value: name || '' }], v => {
+    const n = v.name.trim();
+    if (!n) { alert('Введите название'); return false; }
+    if (n === name) return;
+    if (cfg[kind].includes(n)) { alert('Такое название уже есть'); return false; }
+    if (!name) cfg[kind].push(n);
+    else {
+      cfg[kind] = cfg[kind].map(x => x === name ? n : x);
+      for (const t of txs) if (t.type === kind && t.cat === name) t.cat = n;
+      if (kind === 'exp' && cfg.limits[name]) { cfg.limits[n] = cfg.limits[name]; delete cfg.limits[name]; }
+    }
+    save(); refresh();
+  }, name && delButton('Удалить категорию (старые записи останутся)', () => { cfg[kind] = cfg[kind].filter(x => x !== name); }));
+}
+
+function accForm(a) {
+  const bal = a ? balances(txs, cfg.accs)[a.name] : 0;
+  const used = a && txs.some(t => t.acc === a.name || t.to === a.name);
+  form(a ? a.name : 'Новый счёт', [
+    { k: 'name', label: 'Название', value: a?.name || '' },
+    { k: 'bal', label: 'Текущий баланс, ₸', type: 'number', value: a ? Math.round(bal * 100) / 100 : '' },
+  ], v => {
+    const name = v.name.trim(), want = parseFloat(String(v.bal).replace(/\s/g, '').replace(',', '.')) || 0;
+    if (!name) { alert('Введите название'); return false; }
+    if (name !== a?.name && cfg.accs.some(x => x.name === name)) { alert('Такой счёт уже есть'); return false; }
+    if (!a) { a = { name, start: 0 }; cfg.accs.push(a); }
+    else if (name !== a.name) {
+      for (const t of txs) { if (t.acc === a.name) t.acc = name; if (t.to === a.name) t.to = name; }
+      if (cfg.lastAcc === a.name) cfg.lastAcc = name;
+      a.name = name;
+    }
+    // store the start so that start + all records = the balance the user typed
+    a.start = Math.round((want - (balances(txs, cfg.accs)[name] - a.start)) * 100) / 100;
+    save(); refresh();
+  }, a && !used && delButton('Удалить счёт', () => { cfg.accs = cfg.accs.filter(x => x !== a); }));
+}
+
+function txForm(t) {
+  const edit = !!t.id;
+  const f = [{ k: 'amount', label: 'Сумма', type: 'amount', value: t.amount || '' }];
+  if (edit) {
+    f.push({ k: 'acc', label: t.type === 'tr' ? 'Со счёта' : 'Счёт', options: accOpts(), value: t.acc });
+    if (t.type === 'tr') f.push({ k: 'to', label: 'На счёт', options: accOpts(), value: t.to });
+    if (t.type === 'inc' || t.type === 'exp') f.push({ k: 'cat', label: 'Категория', options: [...new Set([...cfg[t.type], t.cat])].map(c => [c, c]), value: t.cat });
+  }
+  f.push({ k: 'date', label: 'Дата', type: 'date', value: t.date || today() }, { k: 'note', label: 'Комментарий', value: t.note || '' });
+  const title = edit ? 'Изменить запись' : t.type === 'inc' ? `${t.cat} → ${t.acc}` : t.type === 'exp' ? `${t.acc} → ${t.cat}` : `Перевод ${t.acc} → ${t.to}`;
+  form(title, f, v => {
+    if (v.to && v.acc === v.to) { alert('Выберите разные счета'); return false; }
+    Object.assign(t, v, { date: v.date || today(), note: v.note.trim() });
+    if (!edit) { t.id = uid(); txs.push(t); }
+    cfg.lastAcc = t.acc;
+    save(); refresh();
+    toast(`${edit ? 'Изменено' : 'Сохранено'}: ${title} · ${money(t.amount)}`);
+  }, edit && delButton('Удалить запись', () => { txs = txs.filter(x => x !== t); }));
+}
+
+let toastTimer;
+function toast(msg, err) {
+  const el = $('toast');
+  el.textContent = msg; el.style.background = err ? '#a33' : '#2e7d4f'; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ---- month ----
+let ym = today().slice(0, 7);
+document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
+  const d = new Date(+ym.slice(0, 4), +ym.slice(5) - 1 + +b.dataset.m, 1);
+  ym = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+  refresh();
+});
+
+function renderMonth() {
+  document.querySelectorAll('.mTitle').forEach(e => e.textContent = `${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`);
+  const s = monthStats(txs, ym);
+  $('totals').innerHTML = `<div><span>Доход</span><b class="inc">${money(s.inc)}</b></div>
+    <div><span>Расход</span><b class="exp">${money(s.exp)}</b></div>
+    <div><span>Итог</span><b>${money(s.inc - s.exp)}</b></div>`;
+  // biggest slice first, colours by rank so neighbours always differ
+  const parts = obj => Object.entries(obj).sort((a, b) => b[1] - a[1]).map(([n, v], i) => [n, v, PIE[i % PIE.length]]);
+  const inc = parts(s.incCats), exp = parts(s.cats);
+  const pct = (v, total) => total ? ` <small style="display:inline">${Math.round(v / total * 100)}%</small>` : '';
+  pie($('incPie'), s.inc, inc, 'Доход');
+  pie($('expPie'), s.exp, exp, 'Расход');
+  $('incLegend').innerHTML = inc.map(([n, v, c]) =>
+    `<div class="card"><div class="top"><span><i class="dot" style="background:${c}"></i>${esc(n)}</span><span>${money(v)}${pct(v, s.inc)}</span></div></div>`).join('');
+  const rows = [];
+  for (const [c, sum, color] of [...exp, ...Object.keys(cfg.limits).filter(c => !s.cats[c]).map(c => [c, 0, 'var(--line)'])]) {
+    const lim = cfg.limits[c] || 0;
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `<div class="top"><span><i class="dot" style="background:${color}"></i>${esc(c)}</span><span>${money(sum)}${lim ? ` <small style="display:inline">/ ${money(lim)}</small>` : pct(sum, s.exp)}</span></div>
+      ${lim ? `<div class="bar"><i class="${sum > lim ? 'over' : ''}" style="width:${Math.min(100, sum / lim * 100)}%"></i></div>` : ''}
+      <small>${lim ? (sum > lim ? `Превышено на ${money(sum - lim)}` : `Осталось ${money(lim - sum)}`) + ' · ' : ''}нажмите, чтобы задать лимит</small>`;
+    el.onclick = () => setLimit(c);
+    rows.push(el);
+  }
+  const btn = document.createElement('button');
+  btn.textContent = '+ Лимит для категории';
+  btn.style.width = '100%';
+  btn.onclick = () => form('Лимит на месяц', [
+    { k: 'cat', label: 'Категория', options: cfg.exp.map(c => [c, c]) },
+    { k: 'lim', label: 'Лимит', type: 'amount', value: '' },
+  ], v => { cfg.limits[v.cat] = v.lim; save(); refresh(); });
+  $('catStats').replaceChildren(...rows, btn);
+  renderHist();
+}
+
+function pie(el, total, parts, label) {
+  let at = 0;
+  const stops = parts.map(([, v, c]) => `${c} ${at}% ${at += v / total * 100}%`).join(', ');
+  el.innerHTML = `<div class="pie" role="img" aria-label="${label}: ${parts.map(([n, v]) => `${esc(n)} ${money(v)}`).join(', ') || 'нет данных'}"
+    style="background:${total ? `conic-gradient(${stops})` : 'var(--line)'}"><div><span>${label}</span><b>${money(total)}</b></div></div>`;
+}
+
+function setLimit(c) {
+  const v = prompt(`Лимит на месяц для «${c}», ₸ (пусто — убрать):`, cfg.limits[c] || '');
+  if (v === null) return;
+  const n = parseAmount(v);
+  if (n) cfg.limits[c] = n; else delete cfg.limits[c];
+  save(); refresh();
+}
+
+function renderHist() {
+  const list = txs.filter(t => t.date.startsWith(ym)).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  $('hist').innerHTML = list.length ? '' : '<p style="color:var(--dim);text-align:center">Нет записей</p>';
+  for (const t of list) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    const cls = t.type === 'tr' ? '' : isIn(t) ? 'inc' : 'exp';
+    el.innerHTML = `<div class="top"><div><b class="${cls}">${t.type === 'tr' ? '' : isIn(t) ? '+' : '−'}${money(t.amount)}</b>
+        <small>${esc(txLabel(t))}</small>
+        <small>${t.date.split('-').reverse().join('.')}${t.note ? ' · ' + esc(t.note) : ''}</small></div>
+      <div class="acts"><button data-e>✎</button><button data-d>✕</button></div></div>`;
+    el.querySelector('[data-e]').onclick = () => txForm(t);
+    el.querySelector('[data-d]').onclick = () => { if (confirm('Удалить запись?')) { txs = txs.filter(x => x !== t); save(); refresh(); } };
+    $('hist').append(el);
+  }
+}
+
+$('csvBtn').onclick = async () => {
+  const list = txs.filter(t => t.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date));
+  if (!list.length) return toast('В этом месяце нет записей', true);
+  const file = new File([toCSV(list)], `qalta-${ym}.csv`, { type: 'text/csv' });
+  // share sheet works in home-screen mode on iOS, where plain downloads are unreliable
+  if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file] }); } catch {} return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file); a.download = file.name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+// ---- credits, installments, debts ----
+const daysIn = () => new Date(+ym.slice(0, 4), +ym.slice(5), 0).getDate();
+const dueDay = l => Math.min(l.day, daysIn());  // a "31st" payment falls on the 30th or 28th in short months
+const paidTx = (l, m = ym) => txs.find(t => t.id === l.paid?.[m]);  // deleting the expense in history un-pays the month
+const monthName = d => `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+
+// paid = paid before the app + every payment recorded here; without a total only the monthly payment is known
+function loanInfo(l) {
+  const paid = (l.before || 0) + Object.keys(l.paid || {}).reduce((s, m) => s + (paidTx(l, m)?.amount || 0), 0);
+  if (!l.total) return { paid };
+  const left = Math.max(0, Math.round((l.total - paid) * 100) / 100);
+  const months = Math.ceil(left / l.amount);
+  const now = new Date(), cur = today().slice(0, 7);
+  const end = new Date(now.getFullYear(), now.getMonth() + months - (paidTx(l, cur) ? 0 : 1), 1);
+  return { paid, left, months, end: months ? monthName(end) : '' };
+}
+
+function renderLoans() {
+  const days = daysIn(), first = (new Date(+ym.slice(0, 4), +ym.slice(5) - 1, 1).getDay() + 6) % 7;
+  let cal = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(w => `<div class="w">${w}</div>`).join('') + '<div></div>'.repeat(first);
+  const done = l => loanInfo(l).left === 0 && !paidTx(l);  // fully repaid before this month
+  for (let d = 1; d <= days; d++) {
+    const due = cfg.loans.filter(l => dueDay(l) === d && !done(l));
+    const cls = !due.length ? '' : due.every(paidTx) ? 'ok' : 'due';
+    cal += `<div class="d ${cls} ${`${ym}-${pad(d)}` === today() ? 'today' : ''}">${d}<i></i></div>`;
+  }
+  $('cal').innerHTML = cal;
+
+  const loans = [...cfg.loans].sort((a, b) => dueDay(a) - dueDay(b));
+  const left = loans.filter(l => !paidTx(l) && !done(l)).reduce((s, l) => s + l.amount, 0);
+  $('loanHead').textContent = `Кредиты и рассрочки${left ? ` · в этом месяце ещё ${money(left)}` : ''}`;
+  $('loanList').replaceChildren(...loans.map(l => {
+    const p = paidTx(l), i = loanInfo(l);
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `<div class="top"><div><b>${esc(l.name)}</b><small>${l.kind === 'credit' ? 'Кредит' : 'Рассрочка'} · ${money(l.amount)}/мес · ${dueDay(l)} числа</small>
+        ${l.total ? `<small>${i.left ? `Осталось ${money(i.left)} · ${i.months} мес. · до ${i.end}` : 'Погашен полностью'}</small>` : ''}</div>
+      <div class="acts">${done(l) ? '<small>✓ Погашен</small>' : `<button class="${p ? 'paid' : ''}">${p ? '✓ Оплачен' : 'Оплатить'}</button>`}</div></div>
+      ${l.total ? `<div class="bar"><i style="width:${Math.min(100, i.paid / l.total * 100)}%"></i></div>` : ''}`;
+    el.onclick = () => loanForm(l);
+    const b = el.querySelector('button');
+    if (b) b.onclick = e => { e.stopPropagation(); payLoan(l); };
+    return el;
+  }));
+  if (!loans.length) $('loanList').innerHTML = '<p style="color:var(--dim);text-align:center">Нет кредитов</p>';
+
+  for (const dir of ['owe', 'owed']) {
+    const list = cfg.debts.filter(d => d.dir === dir);
+    $(dir + 'List').innerHTML = list.length ? '' : '<p style="color:var(--dim);text-align:center">Нет</p>';
+    for (const d of list) {
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.innerHTML = `<div class="top"><b>${esc(d.name)}</b><div class="acts"><b class="${dir === 'owe' ? 'out' : 'in'}">${money(d.amount)}</b>
+        <button>${dir === 'owe' ? 'Вернуть' : 'Вернули'}</button></div></div>`;
+      el.querySelector('button').onclick = () => settleDebt(d);
+      $(dir + 'List').append(el);
+    }
+  }
+}
+
+function loanForm(l) {
+  const i = l && loanInfo(l);
+  const info = !l ? '' : `<div class="card info">
+    ${l.total ? `<div><span>Полная сумма</span><b>${money(l.total)}</b></div>` : ''}
+    <div><span>Оплачено</span><b class="inc">${money(i.paid)}${l.total ? ` · ${Math.round(i.paid / l.total * 100)}%` : ''}</b></div>
+    ${l.total ? `<div><span>Остаток</span><b class="exp">${money(i.left)}</b></div>` : ''}
+    <div><span>Ежемесячно</span><b>${money(l.amount)} · ${l.day} числа</b></div>
+    ${l.total ? `<div><span>Осталось платежей</span><b>${i.months ? `${i.months} · последний в ${i.end}` : 'погашен'}</b></div>`
+              : '<small>Укажите полную сумму ниже — тогда будет виден остаток и дата окончания.</small>'}
+  </div>`;
+  form(l ? l.name : 'Новый кредит / рассрочка', [
+    { k: 'kind', label: 'Тип', options: [['credit', 'Кредит'], ['inst', 'Рассрочка']], value: l?.kind },
+    { k: 'name', label: 'Название', value: l?.name || '' },
+    { k: 'total', label: 'Полная сумма кредита', type: 'amount', optional: true, value: l?.total || '' },
+    { k: 'amount', label: 'Платёж в месяц', type: 'amount', value: l?.amount || '' },
+    { k: 'before', label: 'Уже оплачено до начала учёта', type: 'amount', optional: true, value: l?.before || '' },
+    { k: 'day', label: 'День платежа (1–31)', type: 'number', value: l?.day || new Date().getDate() },
+  ], v => {
+    const day = Math.round(+v.day);
+    if (!(day >= 1 && day <= 31)) { alert('День платежа — от 1 до 31'); return false; }
+    const vals = { ...v, day, name: v.name.trim() || (v.kind === 'credit' ? 'Кредит' : 'Рассрочка') };
+    if (l) Object.assign(l, vals); else cfg.loans.push({ id: uid(), paid: {}, ...vals });
+    save(); refresh();
+  }, l && delButton('Удалить кредит', () => { cfg.loans = cfg.loans.filter(x => x !== l); }), info);
+}
+
+function payLoan(l) {
+  const p = paidTx(l);
+  if (p) {
+    if (!confirm(`Отменить оплату «${l.name}»? Расход ${money(p.amount)} удалится.`)) return;
+    txs = txs.filter(x => x !== p); delete l.paid[ym];
+    return save(), refresh();
+  }
+  form(`Оплата: ${l.name}`, [
+    { k: 'amount', label: 'Сумма', type: 'amount', value: l.total && Math.min(l.amount, loanInfo(l).left) || l.amount },  // last payment may be smaller
+    { k: 'acc', label: 'Со счёта', options: accOpts(), value: cfg.lastAcc },
+    { k: 'date', label: 'Дата', type: 'date', value: ym === today().slice(0, 7) ? today() : `${ym}-${pad(dueDay(l))}` },
+  ], v => {
+    const t = { id: uid(), type: 'exp', amount: v.amount, cat: l.kind === 'credit' ? 'Кредиты' : 'Рассрочки', acc: v.acc, to: '', date: v.date || today(), note: l.name };
+    txs.push(t); l.paid[ym] = t.id; cfg.lastAcc = v.acc;
+    save(); refresh(); toast(`Оплачено: ${l.name} · ${money(v.amount)}`);
+  });
+}
+
+// a debt moves money in or out of an account but is neither income nor expense
+const debtTx = (dir, amount, acc, note) => ({ id: uid(), type: 'debt', dir, amount, cat: '', acc, to: '', date: today(), note });
+
+function debtForm() {
+  form('Новый долг', [
+    { k: 'dir', label: 'Что', options: [['owe', 'Я взял в долг'], ['owed', 'Я дал в долг']] },
+    { k: 'name', label: 'Кто', value: '' },
+    { k: 'amount', label: 'Сумма', type: 'amount', value: '' },
+    { k: 'acc', label: 'Счёт', options: [['', 'Без счёта (наличные)'], ...accOpts()], value: cfg.lastAcc },
+  ], v => {
+    const d = { id: uid(), dir: v.dir, name: v.name.trim() || 'Без имени', amount: v.amount };
+    cfg.debts.push(d);
+    if (v.acc) txs.push(debtTx(v.dir === 'owe' ? 'in' : 'out', v.amount, v.acc, d.name));
+    save(); refresh();
+  });
+}
+
+function settleDebt(d) {
+  form(d.dir === 'owe' ? `Вернуть: ${d.name}` : `Вернул(а) мне: ${d.name}`, [
+    { k: 'amount', label: 'Сумма (можно частично)', type: 'amount', value: d.amount },
+    { k: 'acc', label: 'Счёт', options: [['', 'Без счёта (наличные)'], ...accOpts()], value: cfg.lastAcc },
+  ], v => {
+    if (v.acc) txs.push(debtTx(d.dir === 'owe' ? 'out' : 'in', v.amount, v.acc, d.name + ' (возврат)'));
+    d.amount = Math.round((d.amount - v.amount) * 100) / 100;
+    if (d.amount <= 0) cfg.debts = cfg.debts.filter(x => x !== d);
+    save(); refresh();
+  }, delButton('Удалить долг', () => { cfg.debts = cfg.debts.filter(x => x !== d); }));
+}
+
+$('addLoan').onclick = () => loanForm();
+$('addDebt').onclick = debtForm;
+
+// ---- nav ----
+let screen = 'scrAdd';
+function refresh() {
+  if (screen === 'scrAdd') renderAdd();
+  if (screen === 'scrMonth') renderMonth();
+  if (screen === 'scrLoans') { renderMonth(); renderLoans(); }  // renderMonth also sets the month title
+}
+function show(id) {
+  screen = id;
+  document.querySelectorAll('section').forEach(s => s.hidden = s.id !== id);
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.scr === id));
+  refresh();
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.scr));
+
+show('scrAdd');
+navigator.storage?.persist?.();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+
+// self-check: open index.html#test and look at the console
+if (location.hash === '#test') {
+  const d = [
+    { type:'exp', amount:1000, cat:'Еда', acc:'Kaspi', date:'2026-10-01' },
+    { type:'exp', amount:500.5, cat:'Еда', acc:'Kaspi', date:'2026-10-31' },
+    { type:'inc', amount:300000, cat:'Зарплата', acc:'Halyk', date:'2026-10-05' },
+    { type:'tr', amount:50000, acc:'Halyk', to:'Kaspi', date:'2026-10-06' },
+    { type:'debt', dir:'in', amount:20000, acc:'Kaspi', date:'2026-10-07' },
+    { type:'exp', amount:777, cat:'Еда', acc:'Kaspi', date:'2026-11-01' },
+  ];
+  const s = monthStats(d, '2026-10');
+  console.assert(s.exp === 1500.5 && s.inc === 300000 && s.cats['Еда'] === 1500.5, 'monthStats', s);
+  const b = balances(d, [{ name:'Kaspi', start:100 }, { name:'Halyk', start:0 }]);
+  console.assert(b.Kaspi === 100 - 1500.5 + 50000 + 20000 - 777 && b.Halyk === 250000, 'balances', b);
+  console.assert(parseAmount('2 500,5') === 2500.5 && parseAmount('-5') === 0 && parseAmount('abc') === 0, 'parseAmount');
+  console.assert(toCSV([{ ...d[0], note:'a"b;c' }]).includes('"a""b;c"'), 'toCSV escaping');
+  const saved = txs, cur = today().slice(0, 7);
+  txs = [{ id: 'p1', type: 'exp', amount: 15000, date: cur + '-05' }];
+  const li = loanInfo({ amount: 15000, total: 180000, before: 45000, paid: { [cur]: 'p1' } });
+  console.assert(li.paid === 60000 && li.left === 120000 && li.months === 8, 'loanInfo', li);
+  console.assert(loanInfo({ amount: 15000, total: 30000, before: 30000, paid: {} }).months === 0, 'loanInfo done');
+  txs = saved;
+  console.log('self-check done');
+}
+</script>
+</body>
+</html>
