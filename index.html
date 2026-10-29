@@ -127,6 +127,7 @@
   <div class="h">Резервная копия</div>
   <div class="row"><button id="backupBtn">Сохранить всё</button><button id="restoreBtn">Восстановить</button></div>
   <input type="file" id="restoreFile" accept=".csv,text/csv" hidden>
+  <button id="resetBtn" style="width:100%;margin:8px 0 12px;color:var(--red)">Сбросить все деньги и начать с нуля</button>
 </section>
 
 <section id="scrLoans" hidden>
@@ -390,7 +391,6 @@ function bindDrag(el) {
     endDrag();
     if (!moved) tapIcon(el.dataset);
     else if (t) dropAction(el.dataset, t.dataset)();
-    else toast('Доход → счёт, счёт → расход, счёт → счёт', true);
   });
   el.addEventListener('pointercancel', endDrag);
 }
@@ -647,6 +647,14 @@ $('csvBtn').onclick = () => {
 };
 $('backupBtn').onclick = () => shareFile(toCSV(byDate(txs), cfg), `qalta-backup-${today()}.csv`);
 $('restoreBtn').onclick = () => $('restoreFile').click();
+// wipes money (records, balances, credits, debts); keeps categories, accounts, limits and recurring templates
+$('resetBtn').onclick = () => {
+  if (!confirm('Удалить все записи, балансы счетов, кредиты и долги? Иконки, счета, лимиты и регулярные платежи останутся.\n\nСначала лучше нажать «Сохранить всё».')) return;
+  txs = []; cfg.loans = []; cfg.debts = [];
+  for (const a of cfg.accs) a.start = 0;
+  for (const r of cfg.recur) r.done = {};
+  save(); refresh(); toast('Всё обнулено');
+};
 $('restoreFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
