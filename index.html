@@ -43,6 +43,8 @@
   .ic span { font-size:11px; text-align:center; line-height:1.15; max-width:100%; overflow-wrap:anywhere; color:#c9c7c3; }
   .ic b { font-size:11px; font-weight:600; white-space:nowrap; }
   .ic.plus .c { background:none; border:1.5px dashed var(--line); }
+  #due .card { margin:0 0 6px; padding:8px 10px; border:1px solid #e6c27a55; }
+  #due .acts button { padding:6px 10px; font-size:15px; }
   .ic.src { opacity:.35; }
   .ic.hot .c { transform:scale(1.15); box-shadow:0 0 0 3px var(--acc); }
   #ghost { position:fixed; z-index:20; pointer-events:none; transform:translate(-50%, -50%) scale(1.15); box-shadow:0 8px 24px #000a; }
@@ -66,7 +68,8 @@
   .bar i.over { background:var(--red); }
   .acts { display:flex; gap:6px; flex-shrink:0; }
   .acts button { padding:8px 10px; }
-  .exp, .out { color:var(--red); } .inc, .in { color:var(--green); }
+  .exp, .out, small.out { color:var(--red); } .inc, .in, small.in { color:var(--green); }
+  .totals small { display:block; font-size:11px; margin-top:2px; }
   .paid { background:#86c9a322; border-color:#86c9a344; color:var(--green); }
   .info div { display:flex; justify-content:space-between; gap:8px; padding:4px 0; font-size:15px; }
   .info span { color:var(--dim); }
@@ -101,6 +104,7 @@
 <body>
 
 <section id="scrAdd">
+  <div id="due"></div>
   <div class="zone"><div class="h">Доходы</div><div class="icons" id="incIcons"></div></div>
   <div class="zone"><div class="h">Счета</div><div class="icons" id="accIcons"></div></div>
   <div class="zone grow"><div class="h">Расходы</div><div class="icons" id="expIcons"></div></div>
@@ -117,8 +121,12 @@
   <div id="expPie"></div>
   <div id="catStats"></div>
   <div class="h">История</div>
+  <input id="q" type="search" placeholder="Поиск по комментарию, категории, счёту" autocomplete="off">
   <div id="hist"></div>
-  <button id="csvBtn" style="width:100%;margin:12px 0">Экспорт месяца в CSV</button>
+  <button id="csvBtn" style="width:100%;margin:12px 0 0">Экспорт месяца в CSV</button>
+  <div class="h">Резервная копия</div>
+  <div class="row"><button id="backupBtn">Сохранить всё</button><button id="restoreBtn">Восстановить</button></div>
+  <input type="file" id="restoreFile" accept=".csv,text/csv" hidden>
 </section>
 
 <section id="scrLoans" hidden>
@@ -133,6 +141,9 @@
   <div class="h">Мне должны</div>
   <div id="owedList"></div>
   <div class="row"><button id="addLoan">+ Кредит / рассрочка</button><button id="addDebt">+ Долг</button></div>
+  <div class="h">Регулярные платежи</div>
+  <div id="recurList"></div>
+  <button id="addRecur" style="width:100%">+ Регулярный доход / расход</button>
 </section>
 
 <dialog id="dlg">
@@ -157,7 +168,7 @@ const DEF = {
   inc: ['Зарплата', 'Подработка', 'Подработка 2'],
   exp: ['Продукты','Транспорт','Еда','Развлечения','Связь','Здоровье','Автомобиль','Одежда','Подарки','Переводы людям','Кредиты','Рассрочки','Налоги'],
   accs: ['Freedom','Kaspi','Halyk','Forte','Депозит'].map(name => ({ name, start: 0 })),
-  limits: {}, loans: [], debts: [], lastAcc: 'Kaspi',
+  limits: {}, loans: [], debts: [], recur: [], lastAcc: 'Kaspi',
 };
 // line icons, 24×24, drawn with currentColor; categories the user adds get their first letter instead
 const ICONS = {
@@ -189,6 +200,7 @@ const MAX_ACCS = 8;
 const PIE = TONES;
 
 // tx: {id, type:'exp'|'inc'|'tr'|'debt', amount, cat, acc, to, dir:'in'|'out' (debt only), date:'YYYY-MM-DD', note}
+// recur: {id, type:'exp'|'inc', cat, acc, amount, day, done:{'YYYY-MM': txId | 'skip'}}
 // loan: {id, kind:'credit'|'inst', name, amount, day, paid:{'YYYY-MM': txId}}   debt: {id, dir:'owe'|'owed', name, amount}
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 let txs = load('txs', []);
@@ -246,12 +258,46 @@ const typeName = t => ({ exp: 'Расход', inc: 'Доход', tr: 'Перев
 const txLabel = t => t.type === 'tr' ? `Перевод ${t.acc} → ${t.to}` : t.type === 'debt' ? `${typeName(t)} · ${t.acc || 'наличные'}` : `${t.cat} · ${t.acc}`;
 const isIn = t => t.type === 'inc' || t.dir === 'in';
 
-function toCSV(list) {
+// conf given = full backup: a last "#cfg" row carries accounts, loans, debts as JSON so the file restores everything
+function toCSV(list, conf) {
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['Дата','Тип','Категория','Счёт','На счёт','Сумма','Комментарий']];
-  for (const t of list) rows.push([t.date, typeName(t), t.cat || '', t.acc, t.to || '', String(t.amount).replace('.', ','), t.note || '']);
+  const rows = [['Дата','Тип','Категория','Счёт','На счёт','Сумма','Комментарий','ID']];
+  for (const t of list) rows.push([t.date, typeName(t), t.cat || '', t.acc, t.to || '', String(t.amount).replace('.', ','), t.note || '', t.id]);
+  if (conf) rows.push(['#cfg', JSON.stringify(conf)]);
   // BOM + ";" so Russian-locale Excel opens it in columns with correct Cyrillic
   return '﻿' + rows.map(r => r.map(q).join(';')).join('\r\n');
+}
+
+function parseCSV(s) {
+  const rows = [[]]; let f = '', quoted = false;
+  for (let i = s.charCodeAt(0) === 0xFEFF ? 1 : 0; i < s.length; i++) {
+    const c = s[i];
+    if (quoted) { if (c !== '"') f += c; else if (s[i + 1] === '"') { f += '"'; i++; } else quoted = false; }
+    else if (c === '"') quoted = true;
+    else if (c === ';') { rows.at(-1).push(f); f = ''; }
+    else if (c === '\n') { rows.at(-1).push(f); f = ''; rows.push([]); }
+    else if (c !== '\r') f += c;
+  }
+  rows.at(-1).push(f);
+  return rows.filter(r => r.some(x => x));
+}
+
+// throws on the first bad line so a broken file never replaces good data
+function fromCSV(text) {
+  const TYPES = { 'Расход': { type: 'exp' }, 'Доход': { type: 'inc' }, 'Перевод': { type: 'tr' },
+    'Долг (получено)': { type: 'debt', dir: 'in' }, 'Долг (отдано)': { type: 'debt', dir: 'out' } };
+  const out = { txs: [], cfg: null };
+  parseCSV(text).slice(1).forEach((r, i) => {
+    if (r[0] === '#cfg') return out.cfg = JSON.parse(r[1]);
+    // Excel may re-save dates as 29.10.2026
+    const date = /^\d\d\.\d\d\.\d{4}$/.test(r[0]) ? r[0].split('.').reverse().join('-') : r[0];
+    const ty = TYPES[r[1]], amount = parseAmount(r[5]);
+    if (!ty || !amount || !/^\d{4}-\d\d-\d\d$/.test(date)) throw new Error(`строка ${i + 2}: ${r.join(' ; ')}`);
+    const t = { id: r[7] || uid(), ...ty, amount, cat: r[2] || '', acc: r[3] || '', to: r[4] || '', date, note: r[6] || '' };
+    if (ty.type === 'debt' && t.note.endsWith('(возврат)')) t.ret = true;
+    out.txs.push(t);
+  });
+  return out;
 }
 
 // ---- popup form ----
@@ -375,6 +421,46 @@ function renderAdd() {
   if (cfg.accs.length < MAX_ACCS) accs.push(plus('Счёт', () => accForm()));
   $('accIcons').replaceChildren(...accs);
   $('expIcons').replaceChildren(...cfg.exp.map((n, i) => icon('exp', n, TONES[i % TONES.length])), plus('Расход', () => catForm('exp')));
+  renderDue();
+}
+
+// ---- recurring: due ones show as a banner on the entry screen until confirmed or skipped ----
+// shortcut: only the current month is reminded; a month the app was never opened in is not asked about later
+const recurDay = (r, m) => Math.min(r.day, new Date(+m.slice(0, 4), +m.slice(5), 0).getDate());
+const recurName = r => `${r.type === 'inc' ? `${r.cat} → ${r.acc}` : `${r.acc} → ${r.cat}`}`;
+const dueRecur = (list, date) => list.filter(r => !r.done?.[date.slice(0, 7)] && recurDay(r, date.slice(0, 7)) <= +date.slice(8));
+
+function renderDue() {
+  const cur = today().slice(0, 7);
+  $('due').replaceChildren(...dueRecur(cfg.recur, today()).map(r => {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `<div class="top"><div><b class="${r.type === 'inc' ? 'inc' : 'exp'}">${r.type === 'inc' ? '+' : '−'}${money(r.amount)}</b>
+      <small>${esc(recurName(r))} · ${recurDay(r, cur)} числа</small></div>
+      <div class="acts"><button data-s>Пропустить</button><button class="on" data-ok>✓</button></div></div>`;
+    el.querySelector('[data-ok]').onclick = () => txForm({ type: r.type, cat: r.cat, acc: r.acc, amount: r.amount, date: `${cur}-${pad(recurDay(r, cur))}` },
+      t => { (r.done ??= {})[cur] = t.id; });
+    el.querySelector('[data-s]').onclick = () => { (r.done ??= {})[cur] = 'skip'; save(); refresh(); };
+    return el;
+  }));
+}
+
+function recurForm(r) {
+  const opts = [...cfg.exp.map(c => ['exp|' + c, 'Расход: ' + c]), ...cfg.inc.map(c => ['inc|' + c, 'Доход: ' + c])];
+  if (r && !opts.some(o => o[0] === r.type + '|' + r.cat)) opts.push([r.type + '|' + r.cat, r.cat]);
+  form(r ? recurName(r) : 'Регулярный платёж', [
+    { k: 'cat', label: 'Что', options: opts, value: r ? r.type + '|' + r.cat : 'exp|Связь' },
+    { k: 'amount', label: 'Сумма', type: 'amount', value: r?.amount || '' },
+    { k: 'acc', label: 'Счёт', options: accOpts(), value: r?.acc || cfg.lastAcc },
+    { k: 'day', label: 'День месяца (1–31)', type: 'number', value: r?.day || new Date().getDate() },
+  ], v => {
+    const day = Math.round(+v.day);
+    if (!(day >= 1 && day <= 31)) { alert('День — от 1 до 31'); return false; }
+    const [type, ...c] = v.cat.split('|');
+    const vals = { type, cat: c.join('|'), amount: v.amount, acc: v.acc, day };
+    if (r) Object.assign(r, vals); else cfg.recur.push({ id: uid(), done: {}, ...vals });
+    save(); refresh();
+  }, r && delButton('Удалить регулярный платёж', () => { cfg.recur = cfg.recur.filter(x => x !== r); }));
 }
 
 // tap (no drag) on an icon: account → name/balance, income/expense → rename or delete
@@ -421,7 +507,8 @@ function accForm(a) {
   }, a && !used && delButton('Удалить счёт', () => { cfg.accs = cfg.accs.filter(x => x !== a); }));
 }
 
-function txForm(t) {
+// after(t) runs on a new record before saving (recurring uses it to mark the month done)
+function txForm(t, after) {
   const edit = !!t.id;
   const f = [{ k: 'amount', label: 'Сумма', type: 'amount', value: t.amount || '' }];
   if (edit) {
@@ -434,7 +521,7 @@ function txForm(t) {
   form(title, f, v => {
     if (v.to && v.acc === v.to) { alert('Выберите разные счета'); return false; }
     Object.assign(t, v, { date: v.date || today(), note: v.note.trim() });
-    if (!edit) { t.id = uid(); txs.push(t); }
+    if (!edit) { t.id = uid(); txs.push(t); after?.(t); }
     cfg.lastAcc = t.acc;
     save(); refresh();
     toast(`${edit ? 'Изменено' : 'Сохранено'}: ${title} · ${money(t.amount)}`);
@@ -450,18 +537,23 @@ function toast(msg, err) {
 
 // ---- month ----
 let ym = today().slice(0, 7);
-document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
-  const d = new Date(+ym.slice(0, 4), +ym.slice(5) - 1 + +b.dataset.m, 1);
-  ym = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-  refresh();
-});
+const shiftYm = (m, n) => { const d = new Date(+m.slice(0, 4), +m.slice(5) - 1 + n, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { ym = shiftYm(ym, +b.dataset.m); refresh(); });
+
+// change vs last month; goodUp: growth is good (income), otherwise growth is bad (expenses)
+function delta(v, prev, goodUp) {
+  if (!v && !prev) return '';
+  const d = Math.round(v - prev);
+  if (!d) return '<small>как в прошлом месяце</small>';
+  return `<small class="${(d > 0) === !!goodUp ? 'in' : 'out'}">${d > 0 ? '▲' : '▼'} ${money(Math.abs(d))} к прошлому месяцу</small>`;
+}
 
 function renderMonth() {
   document.querySelectorAll('.mTitle').forEach(e => e.textContent = `${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`);
-  const s = monthStats(txs, ym);
-  $('totals').innerHTML = `<div><span>Доход</span><b class="inc">${money(s.inc)}</b></div>
-    <div><span>Расход</span><b class="exp">${money(s.exp)}</b></div>
-    <div><span>Итог</span><b>${money(s.inc - s.exp)}</b></div>`;
+  const s = monthStats(txs, ym), p = monthStats(txs, shiftYm(ym, -1));
+  $('totals').innerHTML = `<div><span>Доход</span><b class="inc">${money(s.inc)}</b>${delta(s.inc, p.inc, true)}</div>
+    <div><span>Расход</span><b class="exp">${money(s.exp)}</b>${delta(s.exp, p.exp)}</div>
+    <div><span>Итог</span><b>${money(s.inc - s.exp)}</b>${delta(s.inc - s.exp, p.inc - p.exp, true)}</div>`;
   const ds = debtStats(txs, ym);
   const dl = [['Вернул долги', ds.repaid, 'out'], ['Мне вернули', ds.gotBack, 'in'], ['Взял в долг', ds.took, 'in'], ['Дал в долг', ds.gave, 'out']].filter(r => r[1]);
   $('debtStats').innerHTML = dl.length ? `<div class="h">Долги за месяц</div><div class="card info">${dl.map(([n, v, c]) =>
@@ -472,15 +564,19 @@ function renderMonth() {
   const pct = (v, total) => total ? ` <small style="display:inline">${Math.round(v / total * 100)}%</small>` : '';
   pie($('incPie'), s.inc, inc, 'Доход');
   pie($('expPie'), s.exp, exp, 'Расход');
-  $('incLegend').innerHTML = inc.map(([n, v, c]) =>
-    `<div class="card"><div class="top"><span><i class="dot" style="background:${c}"></i>${esc(n)}</span><span>${money(v)}${pct(v, s.inc)}</span></div></div>`).join('');
+  // categories that only last month had still show, at 0, so a drop is visible
+  const zeros = (cur, prev) => Object.keys(prev).filter(c => !cur[c]).map(c => [c, 0, 'var(--line)']);
+  $('incLegend').innerHTML = [...inc, ...zeros(s.incCats, p.incCats)].map(([n, v, c]) =>
+    `<div class="card"><div class="top"><span><i class="dot" style="background:${c}"></i>${esc(n)}</span><span>${money(v)}${pct(v, s.inc)}</span></div>${delta(v, p.incCats[n] || 0, true)}</div>`).join('');
   const rows = [];
-  for (const [c, sum, color] of [...exp, ...Object.keys(cfg.limits).filter(c => !s.cats[c]).map(c => [c, 0, 'var(--line)'])]) {
+  const extra = zeros(s.cats, { ...p.cats, ...cfg.limits });
+  for (const [c, sum, color] of [...exp, ...extra]) {
     const lim = cfg.limits[c] || 0;
     const el = document.createElement('div');
     el.className = 'card';
     el.innerHTML = `<div class="top"><span><i class="dot" style="background:${color}"></i>${esc(c)}</span><span>${money(sum)}${lim ? ` <small style="display:inline">/ ${money(lim)}</small>` : pct(sum, s.exp)}</span></div>
       ${lim ? `<div class="bar"><i class="${sum > lim ? 'over' : ''}" style="width:${Math.min(100, sum / lim * 100)}%"></i></div>` : ''}
+      ${delta(sum, p.cats[c] || 0)}
       <small>${lim ? (sum > lim ? `Превышено на ${money(sum - lim)}` : `Осталось ${money(lim - sum)}`) + ' · ' : ''}нажмите, чтобы задать лимит</small>`;
     el.onclick = () => setLimit(c);
     rows.push(el);
@@ -511,9 +607,14 @@ function setLimit(c) {
   save(); refresh();
 }
 
+// empty search = this month; with text = all months
 function renderHist() {
-  const list = txs.filter(t => t.date.startsWith(ym)).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-  $('hist').innerHTML = list.length ? '' : '<p style="color:var(--dim);text-align:center">Нет записей</p>';
+  const q = $('q').value.trim().toLowerCase();
+  const found = q ? txs.filter(t => `${t.note} ${t.cat} ${t.acc} ${t.to}`.toLowerCase().includes(q)) : txs.filter(t => t.date.startsWith(ym));
+  const all = found.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  const list = all.slice(0, 300);  // shortcut: shows the newest 300 matches, add paging if that ever feels short
+  $('hist').innerHTML = !list.length ? `<p style="color:var(--dim);text-align:center">${q ? 'Ничего не найдено' : 'Нет записей'}</p>`
+    : q ? `<p style="color:var(--dim);text-align:center">Найдено за всё время: ${all.length}${all.length > 300 ? ', показаны последние 300' : ''}</p>` : '';
   for (const t of list) {
     const el = document.createElement('div');
     el.className = 'card';
@@ -528,15 +629,33 @@ function renderHist() {
   }
 }
 
-$('csvBtn').onclick = async () => {
-  const list = txs.filter(t => t.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date));
-  if (!list.length) return toast('В этом месяце нет записей', true);
-  const file = new File([toCSV(list)], `qalta-${ym}.csv`, { type: 'text/csv' });
+async function shareFile(text, name) {
+  const file = new File([text], name, { type: 'text/csv' });
   // share sheet works in home-screen mode on iOS, where plain downloads are unreliable
   if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file] }); } catch {} return; }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(file); a.download = file.name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+$('q').oninput = renderHist;
+const byDate = list => [...list].sort((a, b) => a.date.localeCompare(b.date));
+
+$('csvBtn').onclick = () => {
+  const list = byDate(txs.filter(t => t.date.startsWith(ym)));
+  if (!list.length) return toast('В этом месяце нет записей', true);
+  shareFile(toCSV(list), `qalta-${ym}.csv`);
+};
+$('backupBtn').onclick = () => shareFile(toCSV(byDate(txs), cfg), `qalta-backup-${today()}.csv`);
+$('restoreBtn').onclick = () => $('restoreFile').click();
+$('restoreFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  let data;
+  try { data = fromCSV(await f.text()); if (!data.cfg) throw new Error('в файле нет строки #cfg — это экспорт месяца, а не резервная копия'); }
+  catch (err) { return alert('Файл не подходит: ' + err.message); }
+  if (!confirm(`Заменить все данные копией «${f.name}»? Записей в копии: ${data.txs.length}. Текущие данные удалятся.`)) return;
+  txs = data.txs; cfg = { ...DEF, ...data.cfg };
+  save(); refresh(); toast('Восстановлено');
 };
 
 // ---- credits, installments, debts ----
@@ -607,6 +726,16 @@ function renderLoans() {
       $(dir + 'List').append(el);
     }
   }
+
+  $('recurList').replaceChildren(...[...cfg.recur].sort((a, b) => a.day - b.day).map(r => {
+    const st = r.done?.[ym], el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `<div class="top"><div><b>${esc(recurName(r))}</b><small>${money(r.amount)} · ${recurDay(r, ym)} числа</small></div>
+      <small>${st === 'skip' ? 'Пропущен' : st ? '✓ Записан' : 'Ждёт'}</small></div>`;
+    el.onclick = () => recurForm(r);
+    return el;
+  }));
+  if (!cfg.recur.length) $('recurList').innerHTML = '<p style="color:var(--dim);text-align:center">Нет</p>';
 }
 
 function loanForm(l) {
@@ -697,6 +826,7 @@ function settleDebt(d) {
 
 $('addLoan').onclick = () => loanForm();
 $('addDebt').onclick = debtForm;
+$('addRecur').onclick = () => recurForm();
 
 // ---- nav ----
 let screen = 'scrAdd';
@@ -737,6 +867,16 @@ if (location.hash === '#test') {
     { type:'debt', dir:'in', amount:300, acc:'Kaspi', date:'2026-10-10', note:'Аня (возврат)' }], '2026-10');
   console.assert(ds.took === 20000 && ds.repaid === 5000 && ds.gotBack === 300 && ds.gave === 0, 'debtStats', ds);
   console.assert(balances([{ type:'debt', dir:'out', amount:5, acc:'' }], [{ name:'Kaspi', start:0 }]).Kaspi === 0, 'cash debt skips accounts');
+  const bk = [{ id:'a1', type:'exp', amount:1234.5, cat:'Еда', acc:'Kaspi', to:'', date:'2026-10-01', note:'кофе "Starbucks"; утро\nвторая строка' },
+    { id:'a2', type:'debt', dir:'out', amount:500, cat:'', acc:'', to:'', date:'2026-10-02', note:'Аня (возврат)', ret:true }];
+  const rt = fromCSV(toCSV(bk, { accs:[{ name:'Kaspi', start:10 }] }));
+  console.assert(JSON.stringify(rt.txs) === JSON.stringify(bk) && rt.cfg.accs[0].start === 10, 'backup round trip', rt);
+  console.assert(fromCSV('h\n29.10.2026;Доход;Зарплата;Kaspi;;"1 000,5";;x').txs[0].date === '2026-10-29', 'excel date');
+  let threw = false; try { fromCSV('h\n2026-10-01;Расход;Еда;Kaspi;;abc'); } catch { threw = true; }
+  console.assert(threw, 'bad backup line rejected');
+  const r = { day: 31, done: { '2026-02': 'skip' } };
+  console.assert(recurDay(r, '2026-02') === 28 && dueRecur([r], '2026-03-30').length === 0 && dueRecur([r], '2026-03-31').length === 1
+    && dueRecur([r], '2026-02-28').length === 0, 'recurring due');
   const saved = txs, cur = today().slice(0, 7);
   txs = [{ id: 'p1', type: 'exp', amount: 15000, date: cur + '-05' }];
   const li = loanInfo({ amount: 15000, total: 180000, before: 45000, paid: { [cur]: 'p1' } });
